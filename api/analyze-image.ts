@@ -15,11 +15,11 @@ function parseAssistantResponse(text: string) {
         : ''
       return {
         gi: json.glycemic_index ?? 50,
-        gl: json.glycemic_load_100g ?? 10,
-        calories: json.caloric_value_100g ?? 100,
+        gl: json.glycemic_load ?? json.glycemic_load_100g ?? 10,
+        calories: json.calories ?? json.caloric_value_100g ?? 100,
         recommendations: json.analysis || suggestions || 'Moderate consumption recommended.',
         foodName: json.food_name,
-        portionSize: '100g',
+        portionSize: json.portion_size || 'estimated serving',
       }
     }
     return {
@@ -28,7 +28,7 @@ function parseAssistantResponse(text: string) {
       calories: json.calories ?? json.caloric_value ?? 100,
       recommendations: json.recommendations ?? json.analysis ?? 'Moderate consumption recommended.',
       foodName: json.foodName ?? json.food_name,
-      portionSize: json.portionSize ?? json.portion_size ?? '100g',
+      portionSize: json.portionSize ?? json.portion_size ?? 'estimated serving',
     }
   } catch {
     // not JSON
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       messages: [
         {
           role: 'system',
-          content: 'You are a nutrition expert. Analyze the food in the image and respond with a JSON object containing: food_name (string), glycemic_index (number), glycemic_load_100g (number), caloric_value_100g (number), analysis (string with health recommendations), suggestions (array of {alternative, rationale} objects).',
+          content: 'You are a nutrition expert. Analyze the food in the image and respond with a JSON object containing: food_name (string), portion_size (string - your best estimate of the portion shown), glycemic_index (number), glycemic_load (number - GL for the estimated portion, NOT per 100g), calories (number - for the estimated portion, NOT per 100g), analysis (string with health recommendations), suggestions (array of {alternative, rationale} objects).',
         },
         {
           role: 'user',

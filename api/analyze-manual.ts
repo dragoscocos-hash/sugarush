@@ -18,11 +18,11 @@ function parseAssistantResponse(text: string) {
         : ''
       return {
         gi: json.glycemic_index ?? 50,
-        gl: json.glycemic_load_100g ?? 10,
-        calories: json.caloric_value_100g ?? 100,
+        gl: json.glycemic_load ?? json.glycemic_load_100g ?? 10,
+        calories: json.calories ?? json.caloric_value_100g ?? 100,
         recommendations: json.analysis || suggestions || 'Moderate consumption recommended.',
         foodName: json.food_name,
-        portionSize: '100g',
+        portionSize: json.portion_size || '1 serving',
       }
     }
     return {
@@ -31,7 +31,7 @@ function parseAssistantResponse(text: string) {
       calories: json.calories ?? json.caloric_value ?? 100,
       recommendations: json.recommendations ?? json.analysis ?? 'Moderate consumption recommended.',
       foodName: json.foodName ?? json.food_name,
-      portionSize: json.portionSize ?? json.portion_size ?? '100g',
+      portionSize: json.portionSize ?? json.portion_size ?? '1 serving',
     }
   } catch {
     // not JSON

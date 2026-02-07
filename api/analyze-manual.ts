@@ -1,16 +1,14 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { analyzeWithAssistant } from './_lib/openai'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' })
-  }
-
+export async function POST(request: Request) {
   try {
-    const { foodName, portionSize, nutrients } = req.body
+    const { foodName, portionSize, nutrients } = await request.json()
 
     if (!foodName) {
-      return res.status(400).json({ message: 'Food name is required' })
+      return new Response(JSON.stringify({ message: 'Food name is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
 
     let prompt = `Analyze this food: "${foodName}"`
@@ -27,16 +25,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const analysis = await analyzeWithAssistant(prompt)
 
-    return res.status(200).json({
+    return new Response(JSON.stringify({
       foodName,
       portionSize: portionSize || '1 serving',
       source: 'manual',
       ...analysis,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
     })
   } catch (error) {
     console.error('Manual analysis error:', error)
-    return res.status(500).json({
+    return new Response(JSON.stringify({
       message: error instanceof Error ? error.message : 'Analysis failed',
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
     })
   }
 }

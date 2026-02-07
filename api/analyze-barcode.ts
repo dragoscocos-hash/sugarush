@@ -1,25 +1,26 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { lookupBarcode } from './_lib/openfoodfacts'
 import { analyzeWithAssistant } from './_lib/openai'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' })
-  }
-
+export async function POST(request: Request) {
   try {
-    const { barcode } = req.body
+    const { barcode } = await request.json()
 
     if (!barcode) {
-      return res.status(400).json({ message: 'Barcode is required' })
+      return new Response(JSON.stringify({ message: 'Barcode is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
 
     // Clean barcode
     const cleanBarcode = barcode.replace(/[^0-9]/g, '')
 
     if (!/^[0-9]{8,14}$/.test(cleanBarcode)) {
-      return res.status(400).json({
+      return new Response(JSON.stringify({
         message: 'Invalid barcode format. Must be 8-14 digits.',
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
       })
     }
 
@@ -45,18 +46,24 @@ Calculate:
 
     const analysis = await analyzeWithAssistant(prompt)
 
-    return res.status(200).json({
+    return new Response(JSON.stringify({
       foodName: product.name,
       portionSize: product.servingSize || '100g',
       imageUrl: product.imageUrl,
       source: 'barcode',
       calories: product.calories,
       ...analysis,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
     })
   } catch (error) {
     console.error('Barcode analysis error:', error)
-    return res.status(500).json({
+    return new Response(JSON.stringify({
       message: error instanceof Error ? error.message : 'Barcode analysis failed',
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
     })
   }
 }

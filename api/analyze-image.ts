@@ -1,16 +1,14 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { analyzeWithAssistantVision } from './_lib/openai'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' })
-  }
-
+export async function POST(request: Request) {
   try {
-    const { image } = req.body
+    const { image } = await request.json()
 
     if (!image) {
-      return res.status(400).json({ message: 'Image is required' })
+      return new Response(JSON.stringify({ message: 'Image is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
 
     const prompt = `Analyze this food image and provide:
@@ -22,15 +20,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const analysis = await analyzeWithAssistantVision(prompt, image)
 
-    return res.status(200).json({
+    return new Response(JSON.stringify({
       source: 'photo',
       portionSize: analysis.portionSize || 'estimated serving',
       ...analysis,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
     })
   } catch (error) {
     console.error('Image analysis error:', error)
-    return res.status(500).json({
+    return new Response(JSON.stringify({
       message: error instanceof Error ? error.message : 'Image analysis failed',
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
     })
   }
 }

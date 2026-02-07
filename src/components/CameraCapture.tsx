@@ -11,8 +11,32 @@ interface Props {
   setIsAnalyzing: (val: boolean) => void
 }
 
+function compressImage(dataUrl: string, maxWidth = 800, quality = 0.7): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      let width = img.width
+      let height = img.height
+
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      }
+
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, width, height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.src = dataUrl
+  })
+}
+
 export function CameraCapture({ onAnalyze, isAnalyzing, setIsAnalyzing }: Props) {
   const [preview, setPreview] = useState<string | null>(null)
+  const [compressedImage, setCompressedImage] = useState<string | null>(null)
   const [portionSize, setPortionSize] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -21,20 +45,22 @@ export function CameraCapture({ onAnalyze, isAnalyzing, setIsAnalyzing }: Props)
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const base64 = event.target?.result as string
       setPreview(base64)
+      // Compress for API call
+      const compressed = await compressImage(base64)
+      setCompressedImage(compressed)
     }
     reader.readAsDataURL(file)
   }
 
   const handleSubmit = async () => {
-    if (!preview) return
+    if (!compressedImage) return
     setIsAnalyzing(true)
 
     try {
-      const result = await analyzeImage(preview)
-      // Override portion size if user specified one
+      const result = await analyzeImage(compressedImage)
       if (portionSize.trim()) {
         result.portionSize = portionSize.trim()
       }
@@ -48,6 +74,7 @@ export function CameraCapture({ onAnalyze, isAnalyzing, setIsAnalyzing }: Props)
 
   const handleRetake = () => {
     setPreview(null)
+    setCompressedImage(null)
     setPortionSize('')
     fileInputRef.current?.click()
   }

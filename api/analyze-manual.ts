@@ -8,8 +8,10 @@ const ASSISTANT_ID = process.env.ASSISTANT_ID || 'asst_OwTl4sIM9SP7fhGGKOSrA9Tp'
 
 function parseAssistantResponse(text: string) {
   try {
-    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-    const json = JSON.parse(cleaned)
+    // Extract JSON from code fences if present, otherwise try the whole text
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    const jsonStr = jsonMatch ? jsonMatch[1].trim() : text.trim()
+    const json = JSON.parse(jsonStr)
     if (json.food_name || json.glycemic_index !== undefined) {
       const suggestions = Array.isArray(json.suggestions)
         ? json.suggestions.map((s: { alternative?: string; rationale?: string }) => `${s.alternative}: ${s.rationale}`).join('. ')

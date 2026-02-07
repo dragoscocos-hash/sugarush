@@ -31,16 +31,23 @@ export async function analyzeWithAssistant(prompt: string): Promise<AssistantRes
       assistant_id: ASSISTANT_ID,
     })
 
-    // Wait for completion
+    // Wait for completion with timeout
     let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id)
+    let attempts = 0
+    const maxAttempts = 45 // ~45 seconds
 
     while (runStatus.status !== 'completed') {
-      if (runStatus.status === 'failed' || runStatus.status === 'cancelled') {
-        throw new Error(`Assistant run ${runStatus.status}`)
+      if (runStatus.status === 'failed' || runStatus.status === 'cancelled' || runStatus.status === 'expired') {
+        throw new Error(`Assistant run ${runStatus.status}: ${runStatus.last_error?.message || 'unknown error'}`)
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error('Assistant run timed out')
       }
 
       await new Promise(resolve => setTimeout(resolve, 1000))
       runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id)
+      attempts++
     }
 
     // Get the messages
@@ -56,7 +63,6 @@ export async function analyzeWithAssistant(prompt: string): Promise<AssistantRes
       throw new Error('Unexpected response type')
     }
 
-    // Parse the response
     return parseAssistantResponse(content.text.value)
   } catch (error) {
     console.error('OpenAI Assistant error:', error)
@@ -69,10 +75,13 @@ export async function analyzeWithAssistantVision(
   imageBase64: string
 ): Promise<AssistantResponse> {
   try {
-    // For vision, use regular completion API
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-vision-preview',
+      model: 'gpt-4o-mini',
       messages: [
+        {
+          role: 'system',
+          content: 'You are a nutrition expert. Analyze the food in the image and respond with a JSON object containing: food_name (string), glycemic_index (number), glycemic_load_100g (number), caloric_value_100g (number), analysis (string with health recommendations), suggestions (array of {alternative, rationale} objects).',
+        },
         {
           role: 'user',
           content: [
@@ -88,7 +97,7 @@ export async function analyzeWithAssistantVision(
           ],
         },
       ],
-      max_tokens: 500,
+      max_tokens: 800,
     })
 
     const content = response.choices[0]?.message?.content
@@ -104,22 +113,65 @@ export async function analyzeWithAssistantVision(
 }
 
 function parseAssistantResponse(text: string): AssistantResponse {
-  // Extract values using regex patterns
+  // Try to parse as JSON first (the assistant is configured to return JSON)
+  try {
+    // Strip markdown code fences if present
+    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+    const json = JSON.parse(cleaned)
+
+    // Handle the assistant's JSON format
+    if (json.food_name || json.glycemic_index !== undefined) {
+      const suggestions = Array.isArray(json.suggestions)
+        ? json.suggestions.map((s: { alternative?: string; rationale?: string }) => `${s.alternative}: ${s.rationale}`).join('. ')
+        : ''
+
+      return {
+        gi: json.glycemic_index ?? 50,
+        gl: json.glycemic_load_100g ?? 10,
+        calories: json.caloric_value_100g ?? 100,
+        recommendations: json.analysis || suggestions || 'Moderate consumption recommended.',
+        foodName: json.food_name,
+        portionSize: '100g',
+      }
+    }
+
+    // Handle other JSON formats
+    return {
+      gi: json.gi ?? json.GI ?? json.glycemic_index ?? 50,
+      gl: json.gl ?? json.GL ?? json.glycemic_load ?? 10,
+      calories: json.calories ?? json.caloric_value ?? 100,
+      recommendations: json.recommendations ?? json.analysis ?? 'Moderate consumption recommended.',
+      foodName: json.foodName ?? json.food_name,
+      portionSize: json.portionSize ?? json.portion_size ?? '100g',
+    }
+  } catch {
+    // Not JSON - could be a humorous rejection or plain text
+  }
+
+  // Check if it's a humorous rejection (non-food input)
+  if (text.includes("don't really want to eat") || text.includes("not recognized as food")) {
+    return {
+      gi: 0,
+      gl: 0,
+      calories: 0,
+      recommendations: text,
+      foodName: 'Not a food item',
+      portionSize: 'N/A',
+    }
+  }
+
+  // Fallback: regex extraction for plain text responses
   const giMatch = text.match(/(?:GI|Glycemic Index)[:\s]+(\d+)/i)
   const glMatch = text.match(/(?:GL|Glycemic Load)[:\s]+(\d+(?:\.\d+)?)/i)
-  const caloriesMatch = text.match(/(?:Calories)[:\s]+(\d+)/i)
+  const caloriesMatch = text.match(/(?:Calories|caloric)[:\s]+(\d+)/i)
   const foodMatch = text.match(/(?:Food|Name)[:\s]+([^\n]+)/i)
-  const portionMatch = text.match(/(?:Portion|Serving)[:\s]+([^\n]+)/i)
-
-  // Extract recommendations (everything after "recommendations:" or similar)
-  const recsMatch = text.match(/(?:recommendations|advice|tips)[:\s]+(.+)/is)
 
   return {
     gi: giMatch ? parseInt(giMatch[1]) : 50,
     gl: glMatch ? parseFloat(glMatch[1]) : 10,
     calories: caloriesMatch ? parseInt(caloriesMatch[1]) : 100,
-    recommendations: recsMatch ? recsMatch[1].trim() : 'Moderate consumption recommended.',
+    recommendations: text.substring(0, 500),
     foodName: foodMatch ? foodMatch[1].trim() : undefined,
-    portionSize: portionMatch ? portionMatch[1].trim() : undefined,
+    portionSize: '100g',
   }
 }

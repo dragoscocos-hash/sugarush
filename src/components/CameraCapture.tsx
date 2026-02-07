@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { Camera } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Camera, Send } from 'lucide-react'
 import { analyzeImage } from '@/lib/api'
 import { FoodAnalysis } from '@/types'
 
@@ -12,6 +13,7 @@ interface Props {
 
 export function CameraCapture({ onAnalyze, isAnalyzing, setIsAnalyzing }: Props) {
   const [preview, setPreview] = useState<string | null>(null)
+  const [portionSize, setPortionSize] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -19,21 +21,35 @@ export function CameraCapture({ onAnalyze, isAnalyzing, setIsAnalyzing }: Props)
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       const base64 = event.target?.result as string
       setPreview(base64)
-      setIsAnalyzing(true)
-
-      try {
-        const result = await analyzeImage(base64)
-        onAnalyze(result)
-      } catch (error) {
-        console.error(error)
-        alert('Analysis failed. Please try again.')
-        setIsAnalyzing(false)
-      }
     }
     reader.readAsDataURL(file)
+  }
+
+  const handleSubmit = async () => {
+    if (!preview) return
+    setIsAnalyzing(true)
+
+    try {
+      const result = await analyzeImage(preview)
+      // Override portion size if user specified one
+      if (portionSize.trim()) {
+        result.portionSize = portionSize.trim()
+      }
+      onAnalyze(result)
+    } catch (error) {
+      console.error(error)
+      alert('Analysis failed. Please try again.')
+      setIsAnalyzing(false)
+    }
+  }
+
+  const handleRetake = () => {
+    setPreview(null)
+    setPortionSize('')
+    fileInputRef.current?.click()
   }
 
   return (
@@ -57,13 +73,49 @@ export function CameraCapture({ onAnalyze, isAnalyzing, setIsAnalyzing }: Props)
         className="hidden"
       />
 
-      <Button
-        onClick={() => fileInputRef.current?.click()}
-        className="w-full"
-        disabled={isAnalyzing}
-      >
-        {preview ? 'Retake Photo' : 'Capture Food'}
-      </Button>
+      {!preview ? (
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full"
+          disabled={isAnalyzing}
+        >
+          Capture Food
+        </Button>
+      ) : (
+        <>
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              Portion Size (optional)
+            </label>
+            <Input
+              placeholder="e.g., 1 cup, 150g"
+              value={portionSize}
+              onChange={(e) => setPortionSize(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              onClick={handleRetake}
+              disabled={isAnalyzing}
+            >
+              Retake Photo
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isAnalyzing}
+              className="gap-2"
+            >
+              {isAnalyzing ? 'Analyzing...' : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Analyze
+                </>
+              )}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
